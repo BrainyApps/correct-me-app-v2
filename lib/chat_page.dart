@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+// ignore: library_prefixes
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
   @override
@@ -21,10 +25,14 @@ class _ChatScreenState extends State<ChatScreen> {
     "Correct",
   ];
   // late String formattedDateTime;
+  var _channel;
   @override
   void initState() {
     super.initState();
-    // formattedDateTime = formatDateTime(DateTime.now());
+    _channel = WebSocketChannel.connect(
+      Uri.parse('ws://127.0.0.1:8000/check'),
+    );
+
     textController.addListener(_updateButtonState);
     SchedulerBinding.instance.addPostFrameCallback((_) {
       scrollController.animateTo(
@@ -33,40 +41,46 @@ class _ChatScreenState extends State<ChatScreen> {
         curve: Curves.easeOut,
       );
     });
-    // socket = IO.io('http://your-socket-io-server.com', <String, dynamic>{
-    //   'transports': ['websocket'],
-    //   'autoConnect': false,
-    // });
-    // socket.connect();
-    // socket.on('message', (data) {
-    //   setState(() {
-    //     mockMessages.add(data['message']);
-    //   });
-    // });
   }
 
   ScrollController scrollController = ScrollController();
   TextEditingController textController = TextEditingController();
   String inputMessage = '';
-  
+
   String formatDateTime(DateTime dateTime) {
     final formatter = DateFormat('MMM d, yyyy HH:mm a');
     return formatter.format(dateTime);
   }
-  void _sendMessage(String message) {
-    setState(() {
-      if (_isButtonEnabled) {
-        mockMessages.add(message);
-        mockMessages.add("Incorrect");
-      }
-    });
-    // socket.emit('message', {'message': message});
-    Future.delayed(const Duration(milliseconds: 100), () {
+
+  void bottomPosition() async {
+    await Future.delayed(const Duration(milliseconds: 200), () {
       scrollController.animateTo(
         scrollController.position.maxScrollExtent,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
+    });
+  }
+
+  void _sendMessage(String message) {
+    final String sentence = jsonEncode({"sentence": message});
+    setState(() {
+      if (_isButtonEnabled) {
+        mockMessages.add(message);
+      }
+    });
+    bottomPosition();
+    _channel.sink.add(sentence);
+    _channel.stream.listen((message) {
+      Map<String, dynamic> correctedSentence = jsonDecode(message);
+      setState(() {
+        if (correctedSentence['corrections'].length == 0) {
+          mockMessages.add("Correct Sentence");
+        } else {
+          mockMessages.add(correctedSentence['result']);
+        }
+      });
+      bottomPosition();
     });
   }
 
@@ -77,8 +91,10 @@ class _ChatScreenState extends State<ChatScreen> {
       _isButtonEnabled = textController.text.isNotEmpty;
     });
   }
+
   @override
   void dispose() {
+    _channel.sink.close();
     textController.removeListener(_updateButtonState);
     textController.dispose();
     scrollController.dispose();
@@ -90,6 +106,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       appBar:
           AppBar(title: const Center(child: Text('Correct Me Application'))),
+      backgroundColor: Colors.black,
       body: Column(
         children: <Widget>[
           Expanded(
@@ -99,7 +116,7 @@ class _ChatScreenState extends State<ChatScreen> {
             itemBuilder: (BuildContext context, int index) {
               final message = mockMessages[index];
               final sender = index % 2 == 0 ? 'Nahid' : 'AI BOT';
-              var formattedDateTime = formatDateTime(DateTime.now());
+              // var formattedDateTime = formatDateTime(DateTime.now());
               final isCurrentUser = sender == 'Nahid';
               return Align(
                 alignment:
@@ -110,8 +127,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   padding: const EdgeInsets.all(8.0),
                   decoration: BoxDecoration(
                     color: isCurrentUser
-                        ? Colors.blue
-                        : const Color.fromARGB(255, 0, 213, 255),
+                        ? const Color.fromARGB(255, 128, 64, 248)
+                        : const Color.fromARGB(255, 53, 53, 53),
                     borderRadius: BorderRadius.circular(8.0),
                   ),
                   child: Column(
@@ -133,15 +150,15 @@ class _ChatScreenState extends State<ChatScreen> {
                           color: isCurrentUser ? Colors.white : Colors.white,
                         ),
                       ),
-                      const SizedBox(height: 4.0),
-                      Text(
-                        formattedDateTime,
-                        style: TextStyle(
-                          fontSize: 12.0,
-                          color:
-                              isCurrentUser ? Colors.white70 : Colors.white70,
-                        ),
-                      ),
+                      // const SizedBox(height: 4.0),
+                      // Text(
+                      //   formattedDateTime,
+                      //   style: TextStyle(
+                      //     fontSize: 12.0,
+                      //     color:
+                      //         isCurrentUser ? Colors.white70 : Colors.white70,
+                      //   ),
+                      // ),
                     ],
                   ),
                 ),
@@ -156,6 +173,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: TextField(
                     controller: textController,
                     decoration: const InputDecoration(
+                      filled: true,
+                      fillColor: Colors.white,
                       hintText:
                           'Please enter a sentence to determine its validity.',
                       border: OutlineInputBorder(),
@@ -177,12 +196,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 FloatingActionButton(
                   onPressed: _isButtonEnabled
                       ? () {
-                          String message = textController.text;
+                          String message = textController.text.trim();
                           _sendMessage(message);
                           textController.clear();
                         }
                       : null,
-                  backgroundColor: _isButtonEnabled ? Colors.blue : Colors.grey, 
+                  backgroundColor: _isButtonEnabled ? Colors.blue : Colors.grey,
                   child: const Icon(Icons.send),
                 ),
               ],
