@@ -63,12 +63,13 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _sendMessage(String message) {
-    final String sentence = jsonEncode({"sentence": message});
+    String sentence = jsonEncode({"sentence": message});
     setState(() {
       if (_isButtonEnabled) {
         mockMessages.add(message);
       }
     });
+    textController.clear();
     bottomPosition();
     _channel.sink.add(sentence);
     _channel.stream.listen((message) {
@@ -188,7 +189,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                     onSubmitted: (value) {
                       _sendMessage(value);
-                      textController.clear();
                     },
                   ),
                 ),
